@@ -1,228 +1,443 @@
 import { useState, useMemo } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
 
-const SliderInput = ({ label, value, min, max, step, format, onChange, color, description }) => {
-  const pct = ((value - min) / (max - min)) * 100;
+// ── Rollins brand colors ──────────────────────────────────────────────
+const R = {
+  crimson:  "#C0392B",
+  deep:     "#8B0000",
+  bright:   "#E53935",
+  blush:    "#FFEBEE",
+  rose:     "#FFCDD2",
+  white:    "#FFFFFF",
+  offwhite: "#FFF5F5",
+  gray:     "#6B7280",
+  darkgray: "#374151",
+  black:    "#111827",
+};
+
+// ── Slider component ──────────────────────────────────────────────────
+function Slider({ label, value, min, max, step, fmt, onChange, sub }) {
+  const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
   return (
-    <div style={{ marginBottom: "1.4rem" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.35rem" }}>
-        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.7rem", color: "#8a9bb0", letterSpacing: "0.08em", textTransform: "uppercase" }}>{label}</span>
-        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: "1.05rem", color: color || "#e8c97a", fontWeight: 700 }}>{format(value)}</span>
+    <div style={{ marginBottom: "1.2rem" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "2px" }}>
+        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.68rem", color: R.gray, textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</span>
+        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "1rem", color: R.crimson, fontWeight: 700 }}>{fmt(value)}</span>
       </div>
-      {description && <div style={{ fontSize: "0.62rem", color: "#4a5a6a", marginBottom: "0.4rem", fontFamily: "Georgia, serif", fontStyle: "italic" }}>{description}</div>}
-      <div style={{ position: "relative", height: "4px", background: "#1a2535", borderRadius: "2px" }}>
-        <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${pct}%`, background: `linear-gradient(90deg, #1e3a5f, ${color || "#e8c97a"})`, borderRadius: "2px" }} />
-        <input type="range" min={min} max={max} step={step} value={value}
-          onChange={e => onChange(parseFloat(e.target.value))}
+      {sub && <div style={{ fontSize: "0.6rem", color: "#9CA3AF", fontStyle: "italic", marginBottom: "4px" }}>{sub}</div>}
+      <div style={{ position: "relative", height: "4px", background: R.rose, borderRadius: "2px" }}>
+        <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${pct}%`, background: `linear-gradient(90deg, ${R.deep}, ${R.bright})`, borderRadius: "2px" }} />
+        <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseFloat(e.target.value))}
           style={{ position: "absolute", top: "-8px", left: 0, width: "100%", opacity: 0, cursor: "pointer", height: "20px", margin: 0 }} />
-        <div style={{ position: "absolute", top: "-5px", left: `calc(${pct}% - 7px)`, width: "14px", height: "14px", borderRadius: "50%", background: color || "#e8c97a", boxShadow: `0 0 8px ${color || "#e8c97a"}88`, pointerEvents: "none" }} />
+        <div style={{ position: "absolute", top: "-5px", left: `calc(${pct}% - 7px)`, width: "14px", height: "14px", borderRadius: "50%", background: R.crimson, boxShadow: `0 0 6px ${R.crimson}99`, pointerEvents: "none" }} />
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "0.3rem" }}>
-        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.58rem", color: "#2d3f52" }}>{format(min)}</span>
-        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.58rem", color: "#2d3f52" }}>{format(max)}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "3px" }}>
+        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.55rem", color: R.rose }}>{fmt(min)}</span>
+        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.55rem", color: R.rose }}>{fmt(max)}</span>
       </div>
+    </div>
+  );
+}
+
+// ── DCF engine (5-year) ────────────────────────────────────────────────
+function calcDCF(fcf, growth, tg, wacc, shares, netDebt) {
+  const g = growth / 100, w = wacc / 100, t = tg / 100;
+  let pvSum = 0;
+  const flows = [];
+  for (let y = 1; y <= 5; y++) {
+    const projected = fcf * Math.pow(1 + g, y);
+    const pv = projected / Math.pow(1 + w, y);
+    flows.push({ year: `${2025 + y}E`, projected, pv });
+    pvSum += pv;
+  }
+  const fcf5 = fcf * Math.pow(1 + g, 5);
+  const tv = (fcf5 * (1 + t)) / (w - t) / Math.pow(1 + w, 5);
+  const ev = pvSum + tv;
+  const equity = ev - netDebt;
+  const price = equity / shares;
+  return { flows, pvSum, tv, ev, equity, price };
+}
+
+// ── Sensitivity heatmap cell color — high contrast 6-step scale ───────
+function heatColor(val, _min, _max, market) {
+  if (val >= market * 1.20) return { bg: "#004D1A", color: "#A8F0C0" };  // deep forest — strong upside
+  if (val >= market * 1.08) return { bg: "#1B7F3A", color: "#E8F8EE" };  // medium green
+  if (val >= market * 0.98) return { bg: "#4CAF50", color: "#FFFFFF" };  // bright green — near fair value
+  if (val >= market * 0.88) return { bg: "#F4C430", color: "#1A1A00" };  // saturated amber — caution
+  if (val >= market * 0.75) return { bg: "#D84315", color: "#FFE8E0" };  // burnt orange — below market
+  return                           { bg: "#7B0000", color: "#FFCCCC" };  // deep maroon — significantly below
+}
+
+const fmtP  = v => `$${v.toFixed(2)}`;
+const fmtPct = v => `${v.toFixed(1)}%`;
+const fmtB  = v => v >= 1000 ? `$${(v/1000).toFixed(1)}B` : `$${v.toFixed(0)}M`;
+
+const ChartTip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{ background: R.deep, border: `1px solid ${R.crimson}`, borderRadius: 6, padding: "8px 12px" }}>
+      <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.7rem", color: R.rose, marginBottom: 4 }}>{label}</div>
+      {payload.map((p, i) => (
+        <div key={i} style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.72rem", color: "#fff" }}>
+          {p.name}: {fmtB(p.value)}
+        </div>
+      ))}
     </div>
   );
 };
 
-const fmt$ = v => v >= 1000 ? `$${(v/1000).toFixed(1)}B` : `$${v.toFixed(0)}M`;
-const fmtPct = v => `${v.toFixed(1)}%`;
-const fmtShares = v => `${v.toFixed(0)}M`;
-const fmtPrice = v => `$${v.toFixed(2)}`;
+export default function RollinsDCF() {
+  // Rollins actual data defaults
+  const [fcf,        setFcf]        = useState(650);
+  const [growth,     setGrowth]     = useState(12);
+  const [tg,         setTg]         = useState(4);
+  const [wacc,       setWacc]       = useState(7.23);
+  const [shares,     setShares]     = useState(481.19);
+  const [netDebt,    setNetDebt]    = useState(509.83);
+  const [mktPrice,   setMktPrice]   = useState(57.57);
+  const [activeTab,  setActiveTab]  = useState("dcf"); // dcf | sensitivity | insights
 
-function calcDCF({ fcf, growthRate1, growthRate2, terminalGrowth, wacc, shares, netDebt }) {
-  const waccD = wacc / 100;
-  const g1 = growthRate1 / 100;
-  const g2 = growthRate2 / 100;
-  const tg = terminalGrowth / 100;
-  const cashFlows = [];
-  let cf = fcf;
-  let pvSum = 0;
-  for (let y = 1; y <= 10; y++) {
-    cf = cf * (1 + (y <= 5 ? g1 : g2));
-    const pv = cf / Math.pow(1 + waccD, y);
-    cashFlows.push({ year: `Yr ${y}`, fcf: cf, pv, phase: y <= 5 ? "phase1" : "phase2" });
-    pvSum += pv;
-  }
-  const lastFCF = cashFlows[9].fcf;
-  const terminalValue = (lastFCF * (1 + tg)) / (waccD - tg);
-  const pvTerminal = terminalValue / Math.pow(1 + waccD, 10);
-  const enterpriseValue = pvSum + pvTerminal;
-  const equityValue = enterpriseValue - netDebt;
-  const intrinsicPrice = equityValue / shares;
-  return { cashFlows, pvSum, terminalValue, pvTerminal, enterpriseValue, equityValue, intrinsicPrice };
-}
+  const res = useMemo(() => calcDCF(fcf, growth, tg, wacc, shares, netDebt),
+    [fcf, growth, tg, wacc, shares, netDebt]);
 
-const CustomTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div style={{ background: "#0a1628", border: "1px solid #1e3a5f", padding: "0.6rem 0.9rem", borderRadius: "6px" }}>
-        <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.7rem", color: "#8a9bb0", marginBottom: "0.3rem" }}>{label}</div>
-        {payload.map((p, i) => (
-          <div key={i} style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.75rem", color: p.color || "#e8c97a" }}>
-            {p.name}: {fmt$(p.value)}
-          </div>
-        ))}
-      </div>
-    );
-  }
-  return null;
-};
+  const upside  = ((res.price - mktPrice) / mktPrice) * 100;
+  const mos     = ((res.price - mktPrice) / res.price) * 100;
+  const isUnder = res.price > mktPrice;
 
-export default function DCFCalculator() {
-  const [fcf, setFcf] = useState(500);
-  const [growthRate1, setGrowthRate1] = useState(15);
-  const [growthRate2, setGrowthRate2] = useState(8);
-  const [terminalGrowth, setTerminalGrowth] = useState(2.5);
-  const [wacc, setWacc] = useState(10);
-  const [shares, setShares] = useState(200);
-  const [netDebt, setNetDebt] = useState(1000);
-  const [currentPrice, setCurrentPrice] = useState(45);
-
-  const result = useMemo(() => calcDCF({ fcf, growthRate1, growthRate2, terminalGrowth, wacc, shares, netDebt }),
-    [fcf, growthRate1, growthRate2, terminalGrowth, wacc, shares, netDebt]);
-
-  const upside = ((result.intrinsicPrice - currentPrice) / currentPrice) * 100;
-  const isUndervalued = result.intrinsicPrice > currentPrice;
-  const marginOfSafety = ((result.intrinsicPrice - currentPrice) / result.intrinsicPrice) * 100;
+  // Sensitivity table: WACC rows × Terminal Growth cols
+  const waccRange = [5.5, 6.0, 6.5, 7.0, 7.23, 7.5, 8.0, 8.5, 9.0];
+  const tgRange   = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0];
+  const sensitivityGrid = waccRange.map(w =>
+    tgRange.map(t => calcDCF(fcf, growth, t, w, shares, netDebt).price)
+  );
+  const allVals = sensitivityGrid.flat();
+  const sMin = Math.min(...allVals), sMax = Math.max(...allVals);
 
   const chartData = [
-    ...result.cashFlows.map(cf => ({ year: cf.year, "PV of FCF": parseFloat(cf.pv.toFixed(1)), phase: cf.phase })),
-    { year: "Terminal", "PV Terminal": parseFloat(result.pvTerminal.toFixed(1)), phase: "terminal" }
+    ...res.flows.map(f => ({ year: f.year, "PV of FCF": parseFloat(f.pv.toFixed(1)) })),
+    { year: "Terminal", "Terminal Value": parseFloat(res.tv.toFixed(1)) }
   ];
 
+  const statCard = (label, value, color, sub) => (
+    <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 10, padding: "1rem", textAlign: "center", boxShadow: "0 1px 4px rgba(192,57,43,0.08)" }}>
+      <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.58rem", color: R.gray, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontFamily: "'Playfair Display',serif", fontSize: "1.8rem", fontWeight: 900, color: color, lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.58rem", color: R.gray, marginTop: 4 }}>{sub}</div>}
+    </div>
+  );
+
   return (
-    <div style={{ minHeight: "100vh", background: "#060e1a", color: "#c8d8e8", fontFamily: "Georgia, serif" }}>
+    <div style={{ minHeight: "100vh", background: R.offwhite, fontFamily: "Georgia, serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet" />
 
-      {/* Header */}
-      <div style={{ background: "linear-gradient(180deg, #0a1628 0%, #060e1a 100%)", borderBottom: "1px solid #1a2a3a", padding: "1.5rem 2rem 1.2rem" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: "1rem", flexWrap: "wrap" }}>
-          <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: "1.6rem", fontWeight: 900, color: "#e8c97a", margin: 0 }}>DCF Valuation Engine</h1>
-          <span style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.65rem", color: "#3a5a7a", letterSpacing: "0.12em", textTransform: "uppercase" }}>Discounted Cash Flow · Intrinsic Value</span>
+      {/* ── Header ── */}
+      <div style={{ background: R.deep, padding: "1.25rem 2rem", borderBottom: `3px solid ${R.crimson}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+          <div style={{ width: 36, height: 36, background: R.crimson, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem", fontWeight: 900, color: "#fff", fontFamily: "'DM Mono',monospace" }}>R</div>
+          <div>
+            <h1 style={{ fontFamily: "'Playfair Display',serif", fontSize: "1.4rem", fontWeight: 900, color: "#fff", margin: 0 }}>Rollins, Inc. (ROL) — DCF Valuation</h1>
+            <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.62rem", color: R.rose, letterSpacing: "0.1em", marginTop: 2 }}>5-YEAR DISCOUNTED CASH FLOW · FY2025 BASE · MARCH 2026</div>
+          </div>
         </div>
-        <p style={{ fontFamily: "Georgia, serif", fontSize: "0.72rem", color: "#4a6a8a", marginTop: "0.4rem", marginBottom: 0, fontStyle: "italic" }}>
-          Adjust the variables below to model intrinsic share price using a 10-year DCF projection.
-        </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "340px 1fr", minHeight: "calc(100vh - 100px)" }}>
+      {/* ── Tab bar ── */}
+      <div style={{ background: R.white, borderBottom: `1px solid ${R.rose}`, display: "flex", padding: "0 2rem" }}>
+        {[["dcf","DCF Calculator"],["sensitivity","Sensitivity Heatmap"],["insights","Key Insights"]].map(([id,label]) => (
+          <button key={id} onClick={() => setActiveTab(id)}
+            style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.7rem", letterSpacing: "0.08em", textTransform: "uppercase", padding: "0.75rem 1.25rem", border: "none", background: "none", cursor: "pointer", borderBottom: activeTab === id ? `3px solid ${R.crimson}` : "3px solid transparent", color: activeTab === id ? R.crimson : R.gray, fontWeight: activeTab === id ? 700 : 400, transition: "all 0.15s" }}>
+            {label}
+          </button>
+        ))}
+      </div>
 
-        {/* LEFT — Sliders */}
-        <div style={{ padding: "1.5rem", borderRight: "1px solid #121e2e", background: "#070f1c", overflowY: "auto" }}>
+      {/* ══ DCF TAB ══════════════════════════════════════════════════════ */}
+      {activeTab === "dcf" && (
+        <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", minHeight: "calc(100vh - 120px)" }}>
 
-          <div style={{ marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #111e2e" }}>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.65rem", color: "#3a6a9a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "0.9rem" }}>📊 Cash Flow Inputs</div>
-            <SliderInput label="Base Free Cash Flow" value={fcf} min={50} max={5000} step={50} format={fmt$} onChange={setFcf} color="#5bc8f5" description="Current annual FCF the company generates" />
-            <SliderInput label="Growth Rate — Yrs 1–5" value={growthRate1} min={-5} max={50} step={0.5} format={fmtPct} onChange={setGrowthRate1} color="#7be8a0" description="Near-term high-growth phase" />
-            <SliderInput label="Growth Rate — Yrs 6–10" value={growthRate2} min={-5} max={30} step={0.5} format={fmtPct} onChange={setGrowthRate2} color="#a0d8a0" description="Maturing growth phase" />
-          </div>
-
-          <div style={{ marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #111e2e" }}>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.65rem", color: "#3a6a9a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "0.9rem" }}>⚖️ Discount & Terminal</div>
-            <SliderInput label="WACC / Discount Rate" value={wacc} min={4} max={20} step={0.25} format={fmtPct} onChange={setWacc} color="#f59b5b" description="Weighted average cost of capital" />
-            <SliderInput label="Terminal Growth Rate" value={terminalGrowth} min={0} max={5} step={0.1} format={fmtPct} onChange={setTerminalGrowth} color="#e8c97a" description="Perpetual growth after yr 10 (≈ GDP)" />
-          </div>
-
-          <div style={{ marginBottom: "1.5rem", paddingBottom: "1rem", borderBottom: "1px solid #111e2e" }}>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.65rem", color: "#3a6a9a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "0.9rem" }}>🏢 Capital Structure</div>
-            <SliderInput label="Shares Outstanding" value={shares} min={10} max={5000} step={10} format={fmtShares} onChange={setShares} color="#c59bf5" description="Total diluted shares (millions)" />
-            <SliderInput label="Net Debt" value={netDebt} min={-5000} max={20000} step={100} format={fmt$} onChange={setNetDebt} color="#f57a7a" description="Total debt minus cash (negative = net cash)" />
-          </div>
-
-          <div>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.65rem", color: "#3a6a9a", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "0.9rem" }}>📈 Market Comparison</div>
-            <SliderInput label="Current Market Price" value={currentPrice} min={1} max={500} step={0.5} format={fmtPrice} onChange={setCurrentPrice} color="#8ab8f5" description="Current stock price for margin of safety" />
-          </div>
-        </div>
-
-        {/* RIGHT — Output */}
-        <div style={{ padding: "1.5rem", overflowY: "auto" }}>
-
-          {/* Hero Cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem", marginBottom: "1.5rem" }}>
-            <div style={{ background: isUndervalued ? "linear-gradient(135deg,#061a0e,#0a2818)" : "linear-gradient(135deg,#1a0606,#280a0a)", border: `1px solid ${isUndervalued ? "#1a4a2a" : "#4a1a1a"}`, borderRadius: "10px", padding: "1.2rem", textAlign: "center" }}>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.6rem", color: "#5a8a6a", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.4rem" }}>Intrinsic Value</div>
-              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "2.2rem", fontWeight: 900, color: isUndervalued ? "#5be890" : "#f57a7a", lineHeight: 1 }}>{fmtPrice(result.intrinsicPrice)}</div>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.62rem", color: isUndervalued ? "#3a7a5a" : "#7a3a3a", marginTop: "0.4rem" }}>per share</div>
+          {/* Left — Sliders */}
+          <div style={{ background: R.white, borderRight: `1px solid ${R.rose}`, padding: "1.5rem", overflowY: "auto" }}>
+            <div style={{ background: R.deep, borderRadius: 8, padding: "0.6rem 0.9rem", marginBottom: "1.25rem" }}>
+              <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.6rem", color: R.rose, letterSpacing: "0.1em" }}>ROLLINS INC · ROL · PEST CONTROL</div>
+              <div style={{ fontFamily: "'Playfair Display',serif", fontSize: "0.8rem", color: "#fff", marginTop: 2 }}>Adjust assumptions to model intrinsic value</div>
             </div>
 
-            <div style={{ background: "#07101e", border: "1px solid #1a2a3a", borderRadius: "10px", padding: "1.2rem", textAlign: "center" }}>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.6rem", color: "#5a7a9a", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.4rem" }}>Market Price</div>
-              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "2.2rem", fontWeight: 900, color: "#8ab8f5", lineHeight: 1 }}>{fmtPrice(currentPrice)}</div>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.62rem", color: "#3a5a7a", marginTop: "0.4rem" }}>current</div>
+            <SectionHead>📊 Cash Flow</SectionHead>
+            <Slider label="Base FCF (FY2025)" value={fcf} min={400} max={1200} step={10} fmt={fmtB} onChange={setFcf} sub="Free Cash Flow — $650M actual (Q4 2025)" />
+            <Slider label="FCF Growth Rate (Yr 1–5)" value={growth} min={4} max={25} step={0.5} fmt={fmtPct} onChange={setGrowth} sub="12% conservative vs 14.8% historical avg" />
+
+            <SectionHead>⚖️ Discount & Terminal</SectionHead>
+            <Slider label="WACC" value={wacc} min={4} max={12} step={0.05} fmt={fmtPct} onChange={setWacc} sub="Avg WACC: 7.23% (β=0.77–0.80, ERP=4.18%)" />
+            <Slider label="Terminal Growth Rate" value={tg} min={1} max={6} step={0.1} fmt={fmtPct} onChange={setTg} sub="4% → long-run GDP; range 2–4% typical" />
+
+            <SectionHead>🏢 Capital Structure</SectionHead>
+            <Slider label="Shares Outstanding" value={shares} min={400} max={600} step={1} fmt={v => `${v.toFixed(0)}M`} onChange={setShares} sub="481.19M diluted (Balance Sheet 12/31/2025)" />
+            <Slider label="Net Debt" value={netDebt} min={0} max={2000} step={10} fmt={fmtB} onChange={setNetDebt} sub="$1,038M debt − $528M cash = $510M net debt" />
+
+            <SectionHead>📈 Market</SectionHead>
+            <Slider label="Current Market Price" value={mktPrice} min={30} max={120} step={0.5} fmt={fmtP} onChange={setMktPrice} sub="$57.57 — Yahoo Finance, March 2026" />
+          </div>
+
+          {/* Right — Output */}
+          <div style={{ padding: "1.5rem", overflowY: "auto" }}>
+
+            {/* Hero cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "0.9rem", marginBottom: "1.2rem" }}>
+              {statCard("Intrinsic Value", fmtP(res.price), isUnder ? "#2e7d32" : R.deep, "DCF per share")}
+              {statCard("Market Price", fmtP(mktPrice), R.darkgray, "Yahoo Finance · Mar 2026")}
+              {statCard(isUnder ? "Upside" : "Downside", `${isUnder?"+":""}${upside.toFixed(1)}%`, isUnder ? "#2e7d32" : R.crimson, isUnder ? `${mos.toFixed(0)}% margin of safety` : "overvalued vs DCF")}
             </div>
 
-            <div style={{ background: isUndervalued ? "linear-gradient(135deg,#06150a,#0a2010)" : "linear-gradient(135deg,#150606,#200a0a)", border: `1px solid ${isUndervalued ? "#1a4a2a" : "#4a1a1a"}`, borderRadius: "10px", padding: "1.2rem", textAlign: "center" }}>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.6rem", color: "#5a8a6a", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.4rem" }}>{isUndervalued ? "Upside" : "Downside"}</div>
-              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "2.2rem", fontWeight: 900, color: isUndervalued ? "#5be890" : "#f57a7a", lineHeight: 1 }}>{isUndervalued ? "+" : ""}{upside.toFixed(1)}%</div>
-              <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.62rem", color: isUndervalued ? "#3a7a5a" : "#7a3a3a", marginTop: "0.4rem" }}>
-                {isUndervalued ? `${marginOfSafety.toFixed(0)}% margin of safety` : "overvalued"}
+            {/* DCF breakdown cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "0.75rem", marginBottom: "1.2rem" }}>
+              {[
+                ["Σ PV of FCFs (5yr)", fmtB(res.pvSum), R.crimson],
+                ["PV Terminal Value", fmtB(res.tv), R.deep],
+                ["Enterprise Value", fmtB(res.ev), R.darkgray],
+                ["Net Debt", fmtB(netDebt), "#ef6c00"],
+                ["Equity Value", fmtB(res.equity), "#1565c0"],
+                ["Terminal % of EV", `${((res.tv/res.ev)*100).toFixed(0)}%`, R.crimson],
+              ].map(([label, val, color]) => (
+                <div key={label} style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 8, padding: "0.7rem 1rem" }}>
+                  <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.57rem", color: R.gray, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>{label}</div>
+                  <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.9rem", fontWeight: 700, color }}>{val}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* 5-year projection table */}
+            <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 10, marginBottom: "1.2rem", overflow: "hidden" }}>
+              <div style={{ background: R.crimson, padding: "0.6rem 1rem" }}>
+                <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.65rem", color: "#fff", letterSpacing: "0.1em", textTransform: "uppercase" }}>5-Year FCF Projection</span>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "'DM Mono',monospace", fontSize: "0.72rem" }}>
+                  <thead>
+                    <tr style={{ background: R.blush }}>
+                      {["Year","Projected FCF","PV of FCF","Discount Factor"].map(h => (
+                        <th key={h} style={{ padding: "0.5rem 0.9rem", textAlign: "right", color: R.deep, fontWeight: 700, fontSize: "0.62rem", textTransform: "uppercase", borderBottom: `1px solid ${R.rose}` }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {res.flows.map((f, i) => (
+                      <tr key={i} style={{ background: i % 2 === 0 ? R.white : R.offwhite }}>
+                        <td style={{ padding: "0.45rem 0.9rem", color: R.crimson, fontWeight: 700, textAlign: "right" }}>{f.year}</td>
+                        <td style={{ padding: "0.45rem 0.9rem", textAlign: "right", color: R.darkgray }}>{fmtB(f.projected)}</td>
+                        <td style={{ padding: "0.45rem 0.9rem", textAlign: "right", color: R.darkgray }}>{fmtB(f.pv)}</td>
+                        <td style={{ padding: "0.45rem 0.9rem", textAlign: "right", color: R.gray }}>{(f.pv / f.projected * 100).toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                    <tr style={{ background: R.blush, fontWeight: 700 }}>
+                      <td style={{ padding: "0.45rem 0.9rem", color: R.deep, textAlign: "right" }}>Terminal</td>
+                      <td style={{ padding: "0.45rem 0.9rem", textAlign: "right", color: R.gray, fontStyle: "italic" }}>—</td>
+                      <td style={{ padding: "0.45rem 0.9rem", textAlign: "right", color: R.deep }}>{fmtB(res.tv)}</td>
+                      <td style={{ padding: "0.45rem 0.9rem", textAlign: "right", color: R.gray }}>—</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Bar chart */}
+            <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 10, padding: "1rem 0.5rem 0.75rem" }}>
+              <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.65rem", color: R.deep, letterSpacing: "0.1em", textTransform: "uppercase", paddingLeft: "1rem", marginBottom: "0.75rem" }}>
+                Present Value Breakdown — 5yr + Terminal
+              </div>
+              <ResponsiveContainer width="100%" height={170}>
+                <BarChart data={chartData} margin={{ top: 4, right: 16, left: 4, bottom: 4 }}>
+                  <XAxis dataKey="year" tick={{ fontFamily: "'DM Mono',monospace", fontSize: 9, fill: R.gray }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontFamily: "'DM Mono',monospace", fontSize: 9, fill: R.gray }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}B`} />
+                  <Tooltip content={<ChartTip />} />
+                  <Bar dataKey="PV of FCF" fill={R.crimson} radius={[3,3,0,0]} maxBarSize={36} />
+                  <Bar dataKey="Terminal Value" fill={R.deep} radius={[3,3,0,0]} maxBarSize={36} />
+                </BarChart>
+              </ResponsiveContainer>
+              <div style={{ display: "flex", gap: "1.5rem", justifyContent: "center" }}>
+                {[[R.crimson,"PV of FCF (Yr 1–5)"],[R.deep,"Terminal Value"]].map(([c,l]) => (
+                  <div key={l} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 2, background: c }} />
+                    <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.6rem", color: R.gray }}>{l}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Verdict */}
+            <div style={{ marginTop: "1rem", background: isUnder ? "#f1f8e9" : R.blush, border: `1px solid ${isUnder ? "#a5d6a7" : R.rose}`, borderRadius: 8, padding: "0.85rem 1.1rem", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+              <span style={{ fontSize: "1.2rem", marginTop: 2 }}>{isUnder ? "🟢" : "🔴"}</span>
+              <div>
+                <div style={{ fontFamily: "'Playfair Display',serif", fontSize: "0.85rem", color: isUnder ? "#2e7d32" : R.deep, fontWeight: 700 }}>
+                  {isUnder ? `ROL appears undervalued by ${Math.abs(upside).toFixed(1)}% — ${mos.toFixed(0)}% margin of safety vs intrinsic value`
+                           : `ROL appears overvalued by ${Math.abs(upside).toFixed(1)}% at current price`}
+                </div>
+                <div style={{ fontFamily: "Georgia,serif", fontStyle: "italic", fontSize: "0.63rem", color: R.gray, marginTop: 3 }}>
+                  High-quality compounders like Rollins often trade at a premium to DCF — 24 consecutive years of revenue growth, Orkin moat, and recession-resistant cash flows command a premium. Model-dependent; verify assumptions against SEC filings.
+                </div>
               </div>
             </div>
           </div>
+        </div>
+      )}
 
-          {/* DCF Component Stats */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "0.75rem", marginBottom: "1.5rem" }}>
+      {/* ══ SENSITIVITY TAB ═════════════════════════════════════════════ */}
+      {activeTab === "sensitivity" && (
+        <div style={{ padding: "1.5rem", maxWidth: 1100, margin: "0 auto" }}>
+          <div style={{ marginBottom: "1.25rem" }}>
+            <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: "1.2rem", color: R.deep, margin: "0 0 4px" }}>Sensitivity Analysis — Intrinsic Share Price</h2>
+            <p style={{ fontFamily: "Georgia,serif", fontSize: "0.72rem", color: R.gray, margin: 0, fontStyle: "italic" }}>
+              WACC (rows) × Terminal Growth Rate (columns) · FCF growth rate locked at {growth.toFixed(1)}% · Base FCF ${fcf}M · {shares.toFixed(0)}M shares · Net debt {fmtB(netDebt)} · Adjust sliders on the DCF tab to update.
+            </p>
+          </div>
+
+          {/* Heatmap */}
+          <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 12, overflow: "hidden", marginBottom: "1.5rem", boxShadow: "0 2px 12px rgba(139,0,0,0.07)" }}>
+            <div style={{ background: "#1C2B3A", padding: "0.7rem 1.2rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.65rem", color: "#A8C4D8", letterSpacing: "0.1em", textTransform: "uppercase" }}>Intrinsic Value per Share — WACC vs Terminal Growth Rate</span>
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.6rem", color: "#7FB3CC" }}>Market: {fmtP(mktPrice)}</span>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'DM Mono',monospace" }}>
+                <thead>
+                  <tr>
+                    <th style={{ background: "#0F1E2B", color: "#7FB3CC", padding: "0.55rem 0.9rem", fontSize: "0.62rem", textAlign: "center", whiteSpace: "nowrap", minWidth: 90 }}>
+                      WACC ↓ / TGR →
+                    </th>
+                    {tgRange.map(t => (
+                      <th key={t} style={{ background: Math.abs(t - tg) < 0.01 ? "#2A5A7A" : "#1C2B3A", color: Math.abs(t - tg) < 0.01 ? "#E0F0FF" : "#A8C4D8", padding: "0.55rem 0.75rem", fontSize: "0.65rem", textAlign: "center", minWidth: 78, borderLeft: "1px solid rgba(255,255,255,0.08)" }}>
+                        {t.toFixed(1)}%
+                        {Math.abs(t - tg) < 0.01 && <div style={{ fontSize: "0.5rem", color: "#7FB3CC" }}>◄ base</div>}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {waccRange.map((w, wi) => (
+                    <tr key={w}>
+                      <td style={{ background: Math.abs(w - wacc) < 0.1 ? "#2A5A7A" : "#1C2B3A", color: Math.abs(w - wacc) < 0.1 ? "#E0F0FF" : "#A8C4D8", padding: "0.5rem 0.9rem", fontSize: "0.65rem", fontWeight: 700, textAlign: "center", whiteSpace: "nowrap", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                        {w.toFixed(2)}%
+                        {Math.abs(w - wacc) < 0.1 && <div style={{ fontSize: "0.5rem", color: "#7FB3CC" }}>▲ base</div>}
+                      </td>
+                      {tgRange.map((t, ti) => {
+                        const val = sensitivityGrid[wi][ti];
+                        const { bg, color } = heatColor(val, sMin, sMax, mktPrice);
+                        const isBase = Math.abs(w - wacc) < 0.1 && Math.abs(t - tg) < 0.01;
+                        return (
+                          <td key={t} style={{ background: bg, color, padding: "0.5rem 0.75rem", textAlign: "center", fontSize: "0.72rem", fontWeight: isBase ? 900 : 500, border: isBase ? `2px solid #fff` : "1px solid rgba(0,0,0,0.06)", position: "relative" }}>
+                            {fmtP(val)}
+                            {isBase && <div style={{ fontSize: "0.45rem", opacity: 0.8 }}>BASE</div>}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "1.5rem", alignItems: "center" }}>
+            <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.62rem", color: R.gray, textTransform: "uppercase", letterSpacing: "0.08em" }}>Legend vs market price ({fmtP(mktPrice)}):</span>
             {[
-              { label: "PV of FCFs (10yr)", value: fmt$(result.pvSum), color: "#5bc8f5" },
-              { label: "PV of Terminal Value", value: fmt$(result.pvTerminal), color: "#e8c97a" },
-              { label: "Enterprise Value", value: fmt$(result.enterpriseValue), color: "#7be8a0" },
-              { label: "Net Debt", value: fmt$(netDebt), color: "#f57a7a" },
-              { label: "Equity Value", value: fmt$(result.equityValue), color: "#c59bf5" },
-              { label: "Terminal % of EV", value: `${((result.pvTerminal / result.enterpriseValue) * 100).toFixed(0)}%`, color: "#f59b5b" },
-            ].map((item, i) => (
-              <div key={i} style={{ background: "#08111f", border: "1px solid #111e2e", borderRadius: "8px", padding: "0.75rem 1rem" }}>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.58rem", color: "#4a6a8a", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: "0.25rem" }}>{item.label}</div>
-                <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.95rem", fontWeight: 700, color: item.color }}>{item.value}</div>
+              ["#004D1A","#A8F0C0",">+20% upside"],
+              ["#1B7F3A","#E8F8EE","+8% to +20%"],
+              ["#4CAF50","#fff","0% to +8%"],
+              ["#F4C430","#1A1A00","-2% to 0%"],
+              ["#D84315","#FFE8E0","-12% to -2%"],
+              ["#7B0000","#FFCCCC","< -12%"],
+            ].map(([bg, color, label]) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                <div style={{ width: 14, height: 14, borderRadius: 3, background: bg }} />
+                <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.6rem", color: R.darkgray }}>{label}</span>
               </div>
             ))}
           </div>
 
-          {/* Chart */}
-          <div style={{ background: "#08111f", border: "1px solid #111e2e", borderRadius: "10px", padding: "1rem 0.5rem 0.5rem", marginBottom: "1rem" }}>
-            <div style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.65rem", color: "#3a6a9a", letterSpacing: "0.12em", textTransform: "uppercase", paddingLeft: "1rem", marginBottom: "0.75rem" }}>
-              Present Value Breakdown — 10yr Projection + Terminal
+          {/* Secondary heatmap: FCF Growth vs WACC */}
+          <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 12px rgba(139,0,0,0.07)" }}>
+            <div style={{ background: "#1C2B3A", padding: "0.7rem 1.2rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.65rem", color: "#A8C4D8", letterSpacing: "0.1em", textTransform: "uppercase" }}>FCF Growth Rate vs WACC — Intrinsic Value per Share</span>
+              <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.6rem", color: "#7FB3CC" }}>Terminal growth locked at {tg.toFixed(1)}%</span>
             </div>
-            <ResponsiveContainer width="100%" height={190}>
-              <BarChart data={chartData} margin={{ top: 5, right: 15, left: 5, bottom: 5 }}>
-                <XAxis dataKey="year" tick={{ fontFamily: "'DM Mono', monospace", fontSize: 9, fill: "#3a5a7a" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontFamily: "'DM Mono', monospace", fontSize: 9, fill: "#3a5a7a" }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}B`} />
-                <Tooltip content={<CustomTooltip />} />
-                <Bar dataKey="PV of FCF" radius={[3,3,0,0]} maxBarSize={30}>
-                  {chartData.map((entry, i) => (
-                    <Cell key={i} fill={entry.phase === "phase1" ? "#1e6a9a" : entry.phase === "phase2" ? "#1a9a6a" : "#9a7a1a"} />
-                  ))}
-                </Bar>
-                <Bar dataKey="PV Terminal" radius={[3,3,0,0]} fill="#9a7a1a" maxBarSize={30} />
-              </BarChart>
-            </ResponsiveContainer>
-            <div style={{ display: "flex", gap: "1.5rem", justifyContent: "center", paddingTop: "0.5rem" }}>
-              {[["#1e6a9a","Yr 1–5 FCF"],["#1a9a6a","Yr 6–10 FCF"],["#9a7a1a","Terminal Value"]].map(([color,label]) => (
-                <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
-                  <div style={{ width: "10px", height: "10px", borderRadius: "2px", background: color }} />
-                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: "0.6rem", color: "#4a6a8a" }}>{label}</span>
-                </div>
-              ))}
+            <div style={{ overflowX: "auto" }}>
+              {(() => {
+                const growthRange = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+                const waccRange2  = [5.5, 6.0, 6.5, 7.0, 7.23, 7.5, 8.0, 8.5, 9.0];
+                const grid2 = waccRange2.map(w => growthRange.map(g => calcDCF(fcf, g, tg, w, shares, netDebt).price));
+                return (
+                  <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'DM Mono',monospace" }}>
+                    <thead>
+                      <tr>
+                        <th style={{ background: "#0F1E2B", color: "#7FB3CC", padding: "0.55rem 0.9rem", fontSize: "0.62rem", textAlign: "center", minWidth: 90 }}>WACC ↓ / g →</th>
+                        {growthRange.map(g => (
+                          <th key={g} style={{ background: Math.abs(g - growth) < 0.1 ? "#2A5A7A" : "#1C2B3A", color: Math.abs(g - growth) < 0.1 ? "#E0F0FF" : "#A8C4D8", padding: "0.55rem 0.75rem", fontSize: "0.65rem", textAlign: "center", minWidth: 72, borderLeft: "1px solid rgba(255,255,255,0.08)" }}>
+                            {g}%
+                            {Math.abs(g - growth) < 0.1 && <div style={{ fontSize: "0.5rem", color: "#7FB3CC" }}>◄ base</div>}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {waccRange2.map((w, wi) => (
+                        <tr key={w}>
+                          <td style={{ background: Math.abs(w - wacc) < 0.1 ? "#2A5A7A" : "#1C2B3A", color: Math.abs(w - wacc) < 0.1 ? "#E0F0FF" : "#A8C4D8", padding: "0.5rem 0.9rem", fontSize: "0.65rem", fontWeight: 700, textAlign: "center", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                            {w.toFixed(2)}%
+                            {Math.abs(w - wacc) < 0.1 && <div style={{ fontSize: "0.5rem", color: R.rose }}>▲ base</div>}
+                          </td>
+                          {growthRange.map((g, gi) => {
+                            const val = grid2[wi][gi];
+                            const { bg, color } = heatColor(val, 0, 0, mktPrice);
+                            const isBase = Math.abs(w - wacc) < 0.1 && Math.abs(g - growth) < 0.1;
+                            return (
+                              <td key={g} style={{ background: bg, color, padding: "0.5rem 0.75rem", textAlign: "center", fontSize: "0.72rem", fontWeight: isBase ? 900 : 500, border: isBase ? "2px solid #fff" : "1px solid rgba(0,0,0,0.06)" }}>
+                                {fmtP(val)}
+                                {isBase && <div style={{ fontSize: "0.45rem", opacity: 0.8 }}>BASE</div>}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
           </div>
 
-          {/* Verdict */}
-          <div style={{ background: isUndervalued ? "#06140a" : "#140606", border: `1px solid ${isUndervalued ? "#1a3a22" : "#3a1a1a"}`, borderRadius: "8px", padding: "0.85rem 1.1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
-            <span style={{ fontSize: "1.3rem" }}>{isUndervalued ? "🟢" : "🔴"}</span>
-            <div>
-              <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "0.85rem", color: isUndervalued ? "#5be890" : "#f57a7a", fontWeight: 700 }}>
-                {isUndervalued
-                  ? `Potentially undervalued by ${Math.abs(upside).toFixed(1)}% — ${marginOfSafety.toFixed(0)}% margin of safety`
-                  : `Potentially overvalued by ${Math.abs(upside).toFixed(1)}% at current price`}
-              </div>
-              <div style={{ fontFamily: "Georgia, serif", fontStyle: "italic", fontSize: "0.65rem", color: "#3a5a5a", marginTop: "0.2rem" }}>
-                Intrinsic value is model-dependent. Verify assumptions against actual financial statements.
-              </div>
+          <div style={{ marginTop: "1rem", background: R.blush, border: `1px solid ${R.rose}`, borderRadius: 8, padding: "0.85rem 1.1rem" }}>
+            <div style={{ fontFamily: "'Playfair Display',serif", fontSize: "0.82rem", color: R.deep, fontWeight: 700, marginBottom: 4 }}>📌 Analyst Interpretation</div>
+            <div style={{ fontFamily: "Georgia,serif", fontStyle: "italic", fontSize: "0.67rem", color: R.darkgray, lineHeight: 1.6 }}>
+              At Rollins' current WACC of 7.23% and 4% terminal growth, the base-case intrinsic value is <strong>{fmtP(res.price)}</strong> vs market price of <strong>{fmtP(mktPrice)}</strong>.
+              A 12–13% FCF growth assumption or a terminal rate near 3.5–4% narrows the gap to market. Rollins' premium is supported by its Orkin moat, 24 consecutive years of revenue growth, and recession-resistant, subscription-based cash flows.
+              Sensitivity shows the valuation is most sensitive to WACC changes — a 100bps WACC decrease adds ~$8–12 to intrinsic value.
             </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* ══ INSIGHTS TAB ════════════════════════════════════════════════ */}
+      {activeTab === "insights" && (
+        <div style={{ maxWidth: 760, margin: "0 auto", padding: "3rem 2rem" }}>
+          <div style={{ borderLeft: `5px solid ${R.crimson}`, paddingLeft: "1.5rem", marginBottom: "2rem" }}>
+            <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.62rem", color: R.crimson, letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: "0.5rem" }}>Rollins, Inc. (ROL) · DCF Study · March 2026</div>
+            <h2 style={{ fontFamily: "'Playfair Display',serif", fontSize: "1.5rem", fontWeight: 900, color: R.deep, margin: 0 }}>Key Insights</h2>
+          </div>
+          <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 12, padding: "2rem 2.25rem", boxShadow: "0 2px 10px rgba(139,0,0,0.06)" }}>
+            <p style={{ fontFamily: "Georgia,serif", fontSize: "1rem", color: R.darkgray, lineHeight: 2, margin: 0 }}>
+              Based on what we can observe, changes in terminal growth rate produce the greatest impact on intrinsic share price. It is also the most difficult assumption to accurately measure because it depends on a wide range of interconnected variables including our WACC and FCF growth rate assumption. As much as we can do the math to arrive at an intrinsic price, the output is not a guarantee but a well educated assumption across a reasonable set of variables. The Intrinsic value is therefore at best a structured estimation rather than an absolute truth and should be interpreted with careful consideration.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SectionHead({ children }) {
+  return (
+    <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.62rem", color: R.crimson, textTransform: "uppercase", letterSpacing: "0.1em", borderBottom: `1px solid ${R.rose}`, paddingBottom: "0.3rem", marginBottom: "0.9rem", marginTop: "0.5rem" }}>
+      {children}
     </div>
   );
 }
