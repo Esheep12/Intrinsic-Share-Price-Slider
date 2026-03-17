@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, ReferenceLine } from "recharts";
-
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
+ 
 // ── Rollins brand colors ──────────────────────────────────────────────
 const R = {
   crimson:  "#C0392B",
@@ -14,31 +14,30 @@ const R = {
   darkgray: "#374151",
   black:    "#111827",
 };
-
-// ── Slider component ──────────────────────────────────────────────────
+ 
 function Slider({ label, value, min, max, step, fmt, onChange, sub }) {
   const pct = Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100));
   return (
-    <div style={{ marginBottom: "1.2rem" }}>
+    <div style={{ marginBottom: "1.3rem" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "2px" }}>
-        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.68rem", color: R.gray, textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</span>
-        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "1rem", color: R.crimson, fontWeight: 700 }}>{fmt(value)}</span>
+        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.65rem", color: "#6B7280", textTransform: "uppercase", letterSpacing: "0.07em" }}>{label}</span>
+        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "1.05rem", color: "#111827", fontWeight: 700 }}>{fmt(value)}</span>
       </div>
-      {sub && <div style={{ fontSize: "0.6rem", color: "#9CA3AF", fontStyle: "italic", marginBottom: "4px" }}>{sub}</div>}
-      <div style={{ position: "relative", height: "4px", background: R.rose, borderRadius: "2px" }}>
-        <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${pct}%`, background: `linear-gradient(90deg, ${R.deep}, ${R.bright})`, borderRadius: "2px" }} />
+      {sub && <div style={{ fontSize: "0.6rem", color: "#9CA3AF", fontStyle: "italic", marginBottom: "5px" }}>{sub}</div>}
+      <div style={{ position: "relative", height: "5px", background: R.rose, borderRadius: "3px" }}>
+        <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: `${pct}%`, background: `linear-gradient(90deg, ${R.deep}, ${R.bright})`, borderRadius: "3px" }} />
         <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseFloat(e.target.value))}
-          style={{ position: "absolute", top: "-8px", left: 0, width: "100%", opacity: 0, cursor: "pointer", height: "20px", margin: 0 }} />
-        <div style={{ position: "absolute", top: "-5px", left: `calc(${pct}% - 7px)`, width: "14px", height: "14px", borderRadius: "50%", background: R.crimson, boxShadow: `0 0 6px ${R.crimson}99`, pointerEvents: "none" }} />
+          style={{ position: "absolute", top: "-8px", left: 0, width: "100%", opacity: 0, cursor: "pointer", height: "22px", margin: 0 }} />
+        <div style={{ position: "absolute", top: "-5px", left: `calc(${pct}% - 7px)`, width: "15px", height: "15px", borderRadius: "50%", background: R.crimson, boxShadow: `0 0 6px ${R.crimson}99`, pointerEvents: "none" }} />
       </div>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "3px" }}>
-        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.55rem", color: R.rose }}>{fmt(min)}</span>
-        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.55rem", color: R.rose }}>{fmt(max)}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "4px" }}>
+        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.6rem", color: "#9CA3AF", fontWeight: 500 }}>{fmt(min)}</span>
+        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.6rem", color: "#9CA3AF", fontWeight: 500 }}>{fmt(max)}</span>
       </div>
     </div>
   );
 }
-
+ 
 // ── DCF engine (5-year) ────────────────────────────────────────────────
 function calcDCF(fcf, growth, tg, wacc, shares, netDebt) {
   const g = growth / 100, w = wacc / 100, t = tg / 100;
@@ -57,7 +56,7 @@ function calcDCF(fcf, growth, tg, wacc, shares, netDebt) {
   const price = equity / shares;
   return { flows, pvSum, tv, ev, equity, price };
 }
-
+ 
 // ── Sensitivity heatmap cell color — high contrast 6-step scale ───────
 function heatColor(val, _min, _max, market) {
   if (val >= market * 1.20) return { bg: "#004D1A", color: "#A8F0C0" };  // deep forest — strong upside
@@ -67,11 +66,11 @@ function heatColor(val, _min, _max, market) {
   if (val >= market * 0.75) return { bg: "#D84315", color: "#FFE8E0" };  // burnt orange — below market
   return                           { bg: "#7B0000", color: "#FFCCCC" };  // deep maroon — significantly below
 }
-
+ 
 const fmtP  = v => `$${v.toFixed(2)}`;
 const fmtPct = v => `${v.toFixed(1)}%`;
 const fmtB  = v => v >= 1000 ? `$${(v/1000).toFixed(1)}B` : `$${v.toFixed(0)}M`;
-
+ 
 const ChartTip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return (
@@ -85,51 +84,51 @@ const ChartTip = ({ active, payload, label }) => {
     </div>
   );
 };
-
+ 
 export default function RollinsDCF() {
   // Rollins actual data defaults
   const [fcf,        setFcf]        = useState(650);
   const [growth,     setGrowth]     = useState(12);
   const [tg,         setTg]         = useState(4);
-  const [wacc,       setWacc]       = useState(7.23);
+  const [wacc,       setWacc]       = useState(7.34);
   const [shares,     setShares]     = useState(481.19);
-  const [netDebt,    setNetDebt]    = useState(509.83);
+  const [netDebt,    setNetDebt]    = useState(95.5);
   const [mktPrice,   setMktPrice]   = useState(57.57);
   const [activeTab,  setActiveTab]  = useState("dcf"); // dcf | sensitivity | insights
-
+ 
   const res = useMemo(() => calcDCF(fcf, growth, tg, wacc, shares, netDebt),
     [fcf, growth, tg, wacc, shares, netDebt]);
-
+ 
   const upside  = ((res.price - mktPrice) / mktPrice) * 100;
   const mos     = ((res.price - mktPrice) / res.price) * 100;
   const isUnder = res.price > mktPrice;
-
+ 
   // Sensitivity table: WACC rows × Terminal Growth cols
-  const waccRange = [5.5, 6.0, 6.5, 7.0, 7.23, 7.5, 8.0, 8.5, 9.0];
+  const waccRange = [5.5, 6.0, 6.5, 7.0, 7.34, 7.5, 8.0, 8.5, 9.0];
   const tgRange   = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0];
   const sensitivityGrid = waccRange.map(w =>
     tgRange.map(t => calcDCF(fcf, growth, t, w, shares, netDebt).price)
   );
   const allVals = sensitivityGrid.flat();
   const sMin = Math.min(...allVals), sMax = Math.max(...allVals);
-
+ 
   const chartData = [
     ...res.flows.map(f => ({ year: f.year, "PV of FCF": parseFloat(f.pv.toFixed(1)) })),
     { year: "Terminal", "Terminal Value": parseFloat(res.tv.toFixed(1)) }
   ];
-
+ 
   const statCard = (label, value, color, sub) => (
     <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 10, padding: "1rem", textAlign: "center", boxShadow: "0 1px 4px rgba(192,57,43,0.08)" }}>
       <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.58rem", color: R.gray, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>{label}</div>
-      <div style={{ fontFamily: "'Playfair Display',serif", fontSize: "1.8rem", fontWeight: 900, color: color, lineHeight: 1 }}>{value}</div>
-      {sub && <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.58rem", color: R.gray, marginTop: 4 }}>{sub}</div>}
+      <div style={{ fontFamily: "'Playfair Display',serif", fontSize: "1.8rem", fontWeight: 900, color: "#111827", lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.6rem", color: color, marginTop: 5, fontWeight: 600 }}>{sub}</div>}
     </div>
   );
-
+ 
   return (
     <div style={{ minHeight: "100vh", background: R.offwhite, fontFamily: "Georgia, serif" }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500;700&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet" />
-
+ 
       {/* ── Header ── */}
       <div style={{ background: R.deep, padding: "1.25rem 2rem", borderBottom: `3px solid ${R.crimson}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
@@ -140,7 +139,7 @@ export default function RollinsDCF() {
           </div>
         </div>
       </div>
-
+ 
       {/* ── Tab bar ── */}
       <div style={{ background: R.white, borderBottom: `1px solid ${R.rose}`, display: "flex", padding: "0 2rem" }}>
         {[["dcf","DCF Calculator"],["sensitivity","Sensitivity Heatmap"],["insights","Key Insights"]].map(([id,label]) => (
@@ -150,44 +149,44 @@ export default function RollinsDCF() {
           </button>
         ))}
       </div>
-
+ 
       {/* ══ DCF TAB ══════════════════════════════════════════════════════ */}
       {activeTab === "dcf" && (
         <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", minHeight: "calc(100vh - 120px)" }}>
-
+ 
           {/* Left — Sliders */}
           <div style={{ background: R.white, borderRight: `1px solid ${R.rose}`, padding: "1.5rem", overflowY: "auto" }}>
             <div style={{ background: R.deep, borderRadius: 8, padding: "0.6rem 0.9rem", marginBottom: "1.25rem" }}>
               <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.6rem", color: R.rose, letterSpacing: "0.1em" }}>ROLLINS INC · ROL · PEST CONTROL</div>
               <div style={{ fontFamily: "'Playfair Display',serif", fontSize: "0.8rem", color: "#fff", marginTop: 2 }}>Adjust assumptions to model intrinsic value</div>
             </div>
-
+ 
             <SectionHead>📊 Cash Flow</SectionHead>
             <Slider label="Base FCF (FY2025)" value={fcf} min={400} max={1200} step={10} fmt={fmtB} onChange={setFcf} sub="Free Cash Flow — $650M actual (Q4 2025)" />
             <Slider label="FCF Growth Rate (Yr 1–5)" value={growth} min={4} max={25} step={0.5} fmt={fmtPct} onChange={setGrowth} sub="12% conservative vs 14.8% historical avg" />
-
+ 
             <SectionHead>⚖️ Discount & Terminal</SectionHead>
-            <Slider label="WACC" value={wacc} min={4} max={12} step={0.05} fmt={fmtPct} onChange={setWacc} sub="Avg WACC: 7.23% (β=0.77–0.80, ERP=4.18%)" />
-            <Slider label="Terminal Growth Rate" value={tg} min={1} max={6} step={0.1} fmt={fmtPct} onChange={setTg} sub="4% → long-run GDP; range 2–4% typical" />
-
+            <Slider label="WACC" value={wacc} min={4} max={12} step={0.05} fmt={fmtPct} onChange={setWacc} sub="Avg WACC: 7.34% (β=0.77–0.80, ERP=4.18%)" />
+            <Slider label="Terminal Growth Rate" value={tg} min={1} max={6} step={0.1} fmt={fmtPct} onChange={setTg} sub="4% → above long-run GDP; justified by industry tailwinds" />
+ 
             <SectionHead>🏢 Capital Structure</SectionHead>
             <Slider label="Shares Outstanding" value={shares} min={400} max={600} step={1} fmt={v => `${v.toFixed(0)}M`} onChange={setShares} sub="481.19M diluted (Balance Sheet 12/31/2025)" />
-            <Slider label="Net Debt" value={netDebt} min={0} max={2000} step={10} fmt={fmtB} onChange={setNetDebt} sub="$1,038M debt − $528M cash = $510M net debt" />
-
+            <Slider label="Net Debt" value={netDebt} min={0} max={2000} step={10} fmt={fmtB} onChange={setNetDebt} sub="$623.7M debt − $528.2M cash = $95.5M net debt (10-K)" />
+ 
             <SectionHead>📈 Market</SectionHead>
             <Slider label="Current Market Price" value={mktPrice} min={30} max={120} step={0.5} fmt={fmtP} onChange={setMktPrice} sub="$57.57 — Yahoo Finance, March 2026" />
           </div>
-
+ 
           {/* Right — Output */}
           <div style={{ padding: "1.5rem", overflowY: "auto" }}>
-
+ 
             {/* Hero cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "0.9rem", marginBottom: "1.2rem" }}>
               {statCard("Intrinsic Value", fmtP(res.price), isUnder ? "#2e7d32" : R.deep, "DCF per share")}
               {statCard("Market Price", fmtP(mktPrice), R.darkgray, "Yahoo Finance · Mar 2026")}
               {statCard(isUnder ? "Upside" : "Downside", `${isUnder?"+":""}${upside.toFixed(1)}%`, isUnder ? "#2e7d32" : R.crimson, isUnder ? `${mos.toFixed(0)}% margin of safety` : "overvalued vs DCF")}
             </div>
-
+ 
             {/* DCF breakdown cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "0.75rem", marginBottom: "1.2rem" }}>
               {[
@@ -200,11 +199,11 @@ export default function RollinsDCF() {
               ].map(([label, val, color]) => (
                 <div key={label} style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 8, padding: "0.7rem 1rem" }}>
                   <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.57rem", color: R.gray, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 3 }}>{label}</div>
-                  <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.9rem", fontWeight: 700, color }}>{val}</div>
+                  <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.95rem", fontWeight: 700, color: "#111827" }}>{val}</div>
                 </div>
               ))}
             </div>
-
+ 
             {/* 5-year projection table */}
             <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 10, marginBottom: "1.2rem", overflow: "hidden" }}>
               <div style={{ background: R.crimson, padding: "0.6rem 1rem" }}>
@@ -238,31 +237,56 @@ export default function RollinsDCF() {
                 </table>
               </div>
             </div>
-
-            {/* Bar chart */}
-            <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 10, padding: "1rem 0.5rem 0.75rem" }}>
-              <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.65rem", color: R.deep, letterSpacing: "0.1em", textTransform: "uppercase", paddingLeft: "1rem", marginBottom: "0.75rem" }}>
-                Present Value Breakdown — 5yr + Terminal
+ 
+            {/* Donut chart — EV Composition */}
+            <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 10, padding: "1rem 1rem 0.75rem" }}>
+              <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.65rem", color: R.deep, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: "0.5rem" }}>
+                Enterprise Value Composition
               </div>
-              <ResponsiveContainer width="100%" height={170}>
-                <BarChart data={chartData} margin={{ top: 4, right: 16, left: 4, bottom: 4 }}>
-                  <XAxis dataKey="year" tick={{ fontFamily: "'DM Mono',monospace", fontSize: 9, fill: R.gray }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontFamily: "'DM Mono',monospace", fontSize: 9, fill: R.gray }} axisLine={false} tickLine={false} tickFormatter={v => `$${(v/1000).toFixed(0)}B`} />
-                  <Tooltip content={<ChartTip />} />
-                  <Bar dataKey="PV of FCF" fill={R.crimson} radius={[3,3,0,0]} maxBarSize={36} />
-                  <Bar dataKey="Terminal Value" fill={R.deep} radius={[3,3,0,0]} maxBarSize={36} />
-                </BarChart>
-              </ResponsiveContainer>
-              <div style={{ display: "flex", gap: "1.5rem", justifyContent: "center" }}>
-                {[[R.crimson,"PV of FCF (Yr 1–5)"],[R.deep,"Terminal Value"]].map(([c,l]) => (
-                  <div key={l} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: 2, background: c }} />
-                    <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.6rem", color: R.gray }}>{l}</span>
+              <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", alignItems: "center", gap: "0.5rem" }}>
+                <div style={{ position: "relative", height: 160 }}>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <PieChart>
+                      <Pie data={[
+                        { name: "Terminal Value", value: parseFloat(((res.tv/res.ev)*100).toFixed(1)) },
+                        { name: "PV of FCFs",     value: parseFloat(((res.pvSum/res.ev)*100).toFixed(1)) },
+                      ]} cx="50%" cy="50%" innerRadius={48} outerRadius={72} dataKey="value" startAngle={90} endAngle={-270} strokeWidth={0}>
+                        <Cell fill={R.deep} />
+                        <Cell fill={R.crimson} />
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", textAlign: "center", pointerEvents: "none" }}>
+                    <div style={{ fontFamily: "'Playfair Display',serif", fontSize: "1.3rem", fontWeight: 900, color: R.deep, lineHeight: 1 }}>{((res.tv/res.ev)*100).toFixed(0)}%</div>
+                    <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.48rem", color: R.gray, textTransform: "uppercase", letterSpacing: "0.06em", marginTop: 2 }}>Terminal</div>
                   </div>
-                ))}
+                </div>
+                <div>
+                  {[
+                    { label: "Terminal Value",   val: fmtB(res.tv),    pct: `${((res.tv/res.ev)*100).toFixed(1)}%`,   color: R.deep    },
+                    { label: "PV of FCFs (5yr)", val: fmtB(res.pvSum), pct: `${((res.pvSum/res.ev)*100).toFixed(1)}%`, color: R.crimson },
+                    { label: "Enterprise Value", val: fmtB(res.ev),    pct: "100%",                                    color: "#374151" },
+                  ].map(item => (
+                    <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.45rem 0", borderBottom: `1px solid ${R.blush}` }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: "50%", background: item.color, flexShrink: 0 }} />
+                        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.63rem", color: R.gray, textTransform: "uppercase", letterSpacing: "0.05em" }}>{item.label}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: "1.2rem" }}>
+                        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.72rem", color: "#111827", fontWeight: 700 }}>{item.val}</span>
+                        <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.68rem", color: item.color, fontWeight: 600, minWidth: 38, textAlign: "right" }}>{item.pct}</span>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ marginTop: "0.6rem", background: R.blush, borderRadius: 6, padding: "0.5rem 0.75rem" }}>
+                    <div style={{ fontFamily: "Georgia,serif", fontSize: "0.65rem", color: R.darkgray, fontStyle: "italic", lineHeight: 1.6 }}>
+                      <strong style={{ color: R.deep }}>{((res.tv/res.ev)*100).toFixed(0)}% of enterprise value</strong> depends on terminal growth — which is why a 1% shift in terminal growth rate moves intrinsic value by ~$6–9 per share.
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-
+ 
             {/* Verdict */}
             <div style={{ marginTop: "1rem", background: isUnder ? "#f1f8e9" : R.blush, border: `1px solid ${isUnder ? "#a5d6a7" : R.rose}`, borderRadius: 8, padding: "0.85rem 1.1rem", display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
               <span style={{ fontSize: "1.2rem", marginTop: 2 }}>{isUnder ? "🟢" : "🔴"}</span>
@@ -279,7 +303,7 @@ export default function RollinsDCF() {
           </div>
         </div>
       )}
-
+ 
       {/* ══ SENSITIVITY TAB ═════════════════════════════════════════════ */}
       {activeTab === "sensitivity" && (
         <div style={{ padding: "1.5rem", maxWidth: 1100, margin: "0 auto" }}>
@@ -289,7 +313,7 @@ export default function RollinsDCF() {
               WACC (rows) × Terminal Growth Rate (columns) · FCF growth rate locked at {growth.toFixed(1)}% · Base FCF ${fcf}M · {shares.toFixed(0)}M shares · Net debt {fmtB(netDebt)} · Adjust sliders on the DCF tab to update.
             </p>
           </div>
-
+ 
           {/* Heatmap */}
           <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 12, overflow: "hidden", marginBottom: "1.5rem", boxShadow: "0 2px 12px rgba(139,0,0,0.07)" }}>
             <div style={{ background: "#1C2B3A", padding: "0.7rem 1.2rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -335,7 +359,7 @@ export default function RollinsDCF() {
               </table>
             </div>
           </div>
-
+ 
           {/* Legend */}
           <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "1.5rem", alignItems: "center" }}>
             <span style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.62rem", color: R.gray, textTransform: "uppercase", letterSpacing: "0.08em" }}>Legend vs market price ({fmtP(mktPrice)}):</span>
@@ -353,7 +377,7 @@ export default function RollinsDCF() {
               </div>
             ))}
           </div>
-
+ 
           {/* Secondary heatmap: FCF Growth vs WACC */}
           <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 12px rgba(139,0,0,0.07)" }}>
             <div style={{ background: "#1C2B3A", padding: "0.7rem 1.2rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -404,18 +428,18 @@ export default function RollinsDCF() {
               })()}
             </div>
           </div>
-
+ 
           <div style={{ marginTop: "1rem", background: R.blush, border: `1px solid ${R.rose}`, borderRadius: 8, padding: "0.85rem 1.1rem" }}>
             <div style={{ fontFamily: "'Playfair Display',serif", fontSize: "0.82rem", color: R.deep, fontWeight: 700, marginBottom: 4 }}>📌 Analyst Interpretation</div>
             <div style={{ fontFamily: "Georgia,serif", fontStyle: "italic", fontSize: "0.67rem", color: R.darkgray, lineHeight: 1.6 }}>
-              At Rollins' current WACC of 7.23% and 4% terminal growth, the base-case intrinsic value is <strong>{fmtP(res.price)}</strong> vs market price of <strong>{fmtP(mktPrice)}</strong>.
-              A 12–13% FCF growth assumption or a terminal rate near 3.5–4% narrows the gap to market. Rollins' premium is supported by its Orkin moat, 24 consecutive years of revenue growth, and recession-resistant, subscription-based cash flows.
-              Sensitivity shows the valuation is most sensitive to WACC changes — a 100bps WACC decrease adds ~$8–12 to intrinsic value.
+              At Rollins' WACC of 7.34% and 4% terminal growth, the base-case intrinsic value is <strong>{fmtP(res.price)}</strong> vs market price of <strong>{fmtP(mktPrice)}</strong>.
+              A 1% shift in terminal growth rate moves intrinsic value by ~$6–9 per share — more than any equivalent shift in WACC or FCF growth.
+              Rollins' fair pricing reflects a bounded $26B TAM and 15% market share, structurally limiting long-run FCF growth vs. Tech or Healthcare.
             </div>
           </div>
         </div>
       )}
-
+ 
       {/* ══ INSIGHTS TAB ════════════════════════════════════════════════ */}
       {activeTab === "insights" && (
         <div style={{ maxWidth: 760, margin: "0 auto", padding: "3rem 2rem" }}>
@@ -425,7 +449,7 @@ export default function RollinsDCF() {
           </div>
           <div style={{ background: R.white, border: `1px solid ${R.rose}`, borderRadius: 12, padding: "2rem 2.25rem", boxShadow: "0 2px 10px rgba(139,0,0,0.06)" }}>
             <p style={{ fontFamily: "Georgia,serif", fontSize: "1rem", color: R.darkgray, lineHeight: 2, margin: 0 }}>
-              Based on what we can observe, changes in terminal growth rate produce the greatest impact on intrinsic share price. It is also the most difficult assumption to accurately measure because it depends on a wide range of interconnected variables including our WACC and FCF growth rate assumption. As much as we can do the math to arrive at an intrinsic price, the output is not a guarantee but a well educated assumption across a reasonable set of variables. The Intrinsic value is therefore at best a structured estimation rather than an absolute truth and should be interpreted with careful consideration.
+              A 1% shift in terminal growth rate adds roughly $6–9 to intrinsic value — more than any equivalent change in WACC or FCF growth. Since terminal growth requires predicting perpetual performance, it is also the assumption we can least anchor to data. Our result of <strong style={{ color: R.deep }}>$59.46 vs. $57.57</strong> reflects the market's accurate view that Rollins will grow steadily, but within the boundaries of what a $26B industry can support. At 15% market share, Rollins lacks the unlimited addressable market of Tech or Healthcare, which structurally caps long-run FCF growth. Intrinsic value is therefore best read as a structured estimation across reasonable assumptions — not a price target.
             </p>
           </div>
         </div>
@@ -433,7 +457,7 @@ export default function RollinsDCF() {
     </div>
   );
 }
-
+ 
 function SectionHead({ children }) {
   return (
     <div style={{ fontFamily: "'DM Mono',monospace", fontSize: "0.62rem", color: R.crimson, textTransform: "uppercase", letterSpacing: "0.1em", borderBottom: `1px solid ${R.rose}`, paddingBottom: "0.3rem", marginBottom: "0.9rem", marginTop: "0.5rem" }}>
